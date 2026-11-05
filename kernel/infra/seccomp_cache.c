@@ -1,6 +1,6 @@
 #include <linux/version.h>
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
 #include <linux/fs.h>
 #include <linux/sched/task.h>
 #include <linux/uaccess.h>
@@ -17,8 +17,12 @@ struct action_cache {
 };
 
 struct seccomp_filter {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
     refcount_t refs;
     refcount_t users;
+#else
+    refcount_t usage;
+#endif
     bool log;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
     bool wait_killable_recv;
@@ -28,7 +32,9 @@ struct seccomp_filter {
     struct bpf_prog *prog;
     struct notification *notif;
     struct mutex notify_lock;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
     wait_queue_head_t wqh;
+#endif
 };
 
 void ksu_seccomp_clear_cache(struct seccomp_filter *filter, int nr)
@@ -50,18 +56,16 @@ void ksu_seccomp_clear_cache(struct seccomp_filter *filter, int nr)
 
 void ksu_seccomp_allow_cache(struct seccomp_filter *filter, int nr)
 {
-    if (!filter) {
-        return;
-    }
-
-    if (nr >= 0 && nr < SECCOMP_ARCH_NATIVE_NR) {
-        set_bit(nr, filter->cache.allow_native);
-    }
+    for (; filter; filter = filter->prev) {
+        if (nr >= 0 && nr < SECCOMP_ARCH_NATIVE_NR) {
+            set_bit(nr, filter->cache.allow_native);
+        }
 
 #ifdef SECCOMP_ARCH_COMPAT
-    if (nr >= 0 && nr < SECCOMP_ARCH_COMPAT_NR) {
-        set_bit(nr, filter->cache.allow_compat);
-    }
+        if (nr >= 0 && nr < SECCOMP_ARCH_COMPAT_NR) {
+            set_bit(nr, filter->cache.allow_compat);
+        }
 #endif
+    }
 }
 #endif
